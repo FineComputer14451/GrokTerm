@@ -18,57 +18,64 @@ User → Termux → GrokTerm launcher → (patched) official grok binary
 - Launcher re-patches after `grok update`
 - DNS file lives on shared storage (`/sdcard/.grokdns`)
 
-## Phase 2 (Scaffolded) — Standalone APK
+## Phase 2 — Standalone APK (with full TUI)
 
 ```
 android/
-├── settings.gradle.kts / build.gradle.kts
-└── app/
-    ├── build.gradle.kts          # Compose, minSdk 28, target 35
-    └── src/main/
-        ├── AndroidManifest.xml
-        ├── java/com/finecomputer/grokterm/
-        │   ├── GrokTermApp.kt
-        │   ├── MainActivity.kt
-        │   ├── data/
-        │   │   ├── GrokBinaryManager.kt   # download stub + DNS patch
-        │   │   └── ApiKeyStore.kt         # EncryptedSharedPreferences
-        │   └── ui/
-        │       ├── theme/                 # Grok dark cyan theme
-        │       ├── GrokTermNavHost.kt
-        │       └── screens/
-        │           ├── HomeScreen.kt
-        │           ├── TerminalScreen.kt  # basic Process shell (upgrade path to VT emulator)
-        │           └── SettingsScreen.kt
-        └── res/
+└── app/src/main/java/com/finecomputer/grokterm/
+    ├── data/
+    │   ├── GrokBinaryManager.kt      # binary location + 16-byte DNS patch
+    │   └── ApiKeyStore.kt            # EncryptedSharedPreferences
+    └── ui/
+        ├── terminal/
+        │   └── XtermTerminal.kt      # WebView + xterm.js + FitAddon + JS bridge
+        └── screens/
+            ├── HomeScreen.kt
+            ├── TerminalScreen.kt     # dual Shell/Grok mode + process management
+            └── SettingsScreen.kt
 ```
+
+### Terminal stack
+
+```
+TerminalScreen
+  └── XtermTerminal (Compose AndroidView → WebView)
+        • xterm.js 5.x + FitAddon + WebLinksAddon
+        • JavascriptInterface bridge (AndroidBridge)
+  └── Process (Shell or patched grok binary)
+        • stdout/stderr → raw stream → term.write()
+        • keystrokes ← term.onData → process stdin
+```
+
+This gives Grok Build its full TUI (colors, cursor, mouse, resize, scrollback) without requiring NDK/PTY yet.
 
 ### Key classes
 
-- **GrokBinaryManager**: Owns the private `files/grok/bin/grok` location, applies the same 16-byte DNS patch used in Phase 1, prepares launch command.
-- **ApiKeyStore**: Secure storage for `XAI_API_KEY`.
-- **TerminalScreen**: Currently a simple interactive `/system/bin/sh` session with Compose output + input. Designed so the process can later be replaced by the patched Grok binary or a full PTY + libvterm/xterm.js-style emulator.
+- **GrokBinaryManager**: Owns private binary path, applies DNS patch, exposes launch path.
+- **ApiKeyStore**: Secure storage for `XAI_API_KEY` (injected into process env).
+- **XtermTerminal / XtermController**: Renders the terminal and exposes write/clear/focus.
+- **TerminalScreen**: Owns process lifecycle, mode switching, and bridges the two sides.
 
-### Next technical steps for Phase 2
+### Next technical steps
 
-1. Replace basic shell with a proper terminal emulator component (evaluate Termux terminal view under compatible terms, or a modern VT100 library + PTY).
-2. When binary is present, default the terminal process to the patched `grok` (or offer a “Launch Grok” action that starts it in plan / interactive mode).
-3. Implement reliable binary acquisition (mirror official install.sh or ship a known artifact).
-4. Shared storage / SAF integration for opening Production Bibles and skill folders.
-5. Foreground service option for long-running agent sessions.
-6. Adaptive icons + polish.
+1. Vendor xterm.js assets for offline use
+2. Robust binary downloader (mirror official install.sh)
+3. SAF / file browser for Production Bibles & skills
+4. Quick-action tiles (Plan mode, headless, resume)
+5. Adaptive icons + onboarding
+6. Optional native PTY later for lower latency if needed
 
 ## Key Constraints
 
 - Android SELinux + no writable /etc
 - Static binary ignores LD_PRELOAD → must patch binary itself
-- Storage permission model (scoped storage + MANAGE_EXTERNAL_STORAGE for full access)
-- Official binary may change the resolv string → patcher must remain robust
+- Storage permission model
+- Official binary may change the resolv string → patcher must stay robust
 
 ## Integration with Grok Imagine Cinematic Studio
 
 Planned helpers:
-- Quick open / sync Production Bible folders from shared storage
+- Quick open / sync Production Bible folders
 - Skill install shortcuts
-- Handoff packet validation on device
+- Handoff packet validation
 - Deep links from studio tools into GrokTerm sessions
