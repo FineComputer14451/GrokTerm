@@ -6,7 +6,7 @@ Kotlin + Jetpack Compose scaffold for a Termux-like experience focused on Grok B
 
 1. Clone the repo
 2. Open the `android/` folder as a project
-3. **Vendor xterm.js assets** (see below)
+3. Vendor xterm.js assets (see below)
 4. Gradle sync → Run on a physical **aarch64** device
 
 ## Vendor xterm.js (offline)
@@ -23,24 +23,19 @@ curl -L -o addon-web-links.min.js https://cdn.jsdelivr.net/npm/@xterm/addon-web-
 ## Current capabilities
 
 - Dark Material3 theme
-- **One-tap Download Grok Binary** — resolves latest from `https://x.ai/cli/stable`, downloads `linux-aarch64` musl binary (with GCS fallback), applies DNS patch automatically
+- One-tap **Download / Update Grok Binary** (official aarch64 musl + DNS patch)
 - Full TUI via offline xterm.js
-- Dual Shell / Grok mode
-- Encrypted API key storage + automatic injection
-- Progress reporting during download
-
-## Binary download flow
-
-1. GET `https://x.ai/cli/stable` → version string
-2. GET `https://x.ai/cli/grok-<ver>-linux-aarch64`
-   (fallback: `storage.googleapis.com/grok-build-public-artifacts/cli/...`)
-3. Write to app private storage → set executable → apply 16-byte DNS patch
+- Dual Shell / Grok mode + API key injection
+- **SAF Project / Production Bible picker**
+  - Select any folder (Bible, skills, repo)
+  - Persistable permission across restarts
+  - Used as working directory for Grok/Shell when a real filesystem path can be resolved
 
 ## Next priorities
 
-1. SAF / file browser for Production Bibles & skills
-2. Quick-action tiles (Plan mode, headless, resume)
-3. Adaptive icons + first-run onboarding
+1. Quick-action tiles (Plan mode, headless `-p`, resume)
+2. Adaptive icons + first-run onboarding
+3. Deeper DocumentFile browsing inside selected trees
 4. Optional Termux deep-link bridge
 
 ## Build notes
