@@ -5,7 +5,7 @@
 1. Make Grok Build first-class on Android phones/tablets.
 2. Minimize friction vs desktop Linux experience.
 3. Stay compatible with official Grok self-updates.
-4. Provide a foundation for a standalone APK that feels like Termux + Grok.
+4. Provide a Termux-like standalone APK and a native Termux path.
 
 ## Phase 1 (Live) — Termux Native
 
@@ -15,67 +15,59 @@ User → Termux → GrokTerm launcher → (patched) official grok binary
 
 - Binary: static musl aarch64 from xAI
 - Only modification: 16-byte string replace for DNS resolv path
-- Launcher re-patches after `grok update`
-- DNS file lives on shared storage (`/sdcard/.grokdns`)
+- Launcher can re-patch after `grok update`
+- DNS file on shared storage (`/sdcard/.grokdns`)
 
-## Phase 2 — Standalone APK (with full TUI)
+## Phase 2 (v0.3.0) — Standalone APK
 
 ```
-android/
-└── app/src/main/java/com/finecomputer/grokterm/
-    ├── data/
-    │   ├── GrokBinaryManager.kt      # binary location + 16-byte DNS patch
-    │   └── ApiKeyStore.kt            # EncryptedSharedPreferences
-    └── ui/
-        ├── terminal/
-        │   └── XtermTerminal.kt      # WebView + xterm.js + FitAddon + JS bridge
-        └── screens/
-            ├── HomeScreen.kt
-            ├── TerminalScreen.kt     # dual Shell/Grok mode + process management
-            └── SettingsScreen.kt
+android/app/src/main/java/com/finecomputer/grokterm/
+├── data/
+│   ├── GrokBinaryManager.kt       # path + DNS patch
+│   ├── GrokBinaryDownloader.kt    # x.ai/cli + GCS fallback
+│   ├── ApiKeyStore.kt             # EncryptedSharedPreferences
+│   ├── ProjectStore.kt            # SAF tree URI + persistable perms
+│   ├── OnboardingStore.kt
+│   ├── LaunchAction.kt / PendingLaunch
+│   └── TermuxBridge.kt            # RUN_COMMAND / launch / F-Droid
+└── ui/
+    ├── terminal/XtermTerminal.kt  # WebView + offline xterm.js bridge
+    └── screens/
+        ├── OnboardingScreen.kt
+        ├── HomeScreen.kt
+        ├── TerminalScreen.kt
+        ├── SettingsScreen.kt
+        └── FileBrowserScreen.kt   # DocumentFile + text preview
 ```
 
 ### Terminal stack
 
 ```
 TerminalScreen
-  └── XtermTerminal (Compose AndroidView → WebView)
-        • xterm.js 5.x + FitAddon + WebLinksAddon
-        • JavascriptInterface bridge (AndroidBridge)
+  └── XtermTerminal (AndroidView → WebView → file:///android_asset/xterm/)
   └── Process (Shell or patched grok binary)
-        • stdout/stderr → raw stream → term.write()
-        • keystrokes ← term.onData → process stdin
+        stdout → term.write()
+        term.onData → process stdin
 ```
 
-This gives Grok Build its full TUI (colors, cursor, mouse, resize, scrollback) without requiring NDK/PTY yet.
+### Binary download flow
 
-### Key classes
+1. `GET https://x.ai/cli/stable` → version
+2. `GET https://x.ai/cli/grok-<ver>-linux-aarch64`
+3. Fallback GCS bucket
+4. Write to app files → executable → DNS patch
 
-- **GrokBinaryManager**: Owns private binary path, applies DNS patch, exposes launch path.
-- **ApiKeyStore**: Secure storage for `XAI_API_KEY` (injected into process env).
-- **XtermTerminal / XtermController**: Renders the terminal and exposes write/clear/focus.
-- **TerminalScreen**: Owns process lifecycle, mode switching, and bridges the two sides.
+### Key constraints
 
-### Next technical steps
-
-1. Vendor xterm.js assets for offline use
-2. Robust binary downloader (mirror official install.sh)
-3. SAF / file browser for Production Bibles & skills
-4. Quick-action tiles (Plan mode, headless, resume)
-5. Adaptive icons + onboarding
-6. Optional native PTY later for lower latency if needed
-
-## Key Constraints
-
-- Android SELinux + no writable /etc
-- Static binary ignores LD_PRELOAD → must patch binary itself
-- Storage permission model
-- Official binary may change the resolv string → patcher must stay robust
+- Android SELinux + no writable `/etc`
+- Static musl binary → patch resolv path in-place
+- SAF trees may not resolve to real paths (cwd fallback to app files)
+- Official binary may change the resolv string → patcher must stay defensive
 
 ## Integration with Grok Imagine Cinematic Studio
 
-Planned helpers:
-- Quick open / sync Production Bible folders
-- Skill install shortcuts
-- Handoff packet validation
-- Deep links from studio tools into GrokTerm sessions
+Supported today:
+- Open Production Bible / skills folders via SAF
+- Browse + preview Bible / skill text files
+- Launch Grok with that folder as working directory when resolvable
+- Hand off to Termux for full native sessions

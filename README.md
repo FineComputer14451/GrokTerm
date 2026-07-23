@@ -2,68 +2,76 @@
 
 **Android terminal environment optimized for xAI Grok Build**
 
-A Termux-like experience purpose-built for running the official Grok Build CLI (`grok`) natively on Android (aarch64).  
-No proot required for the binary. Automatic DNS patching. One-tap friendly setup. Designed as the mobile companion for SuperGrok / Grok Imagine Cinematic Studio workflows.
+A Termux-like experience purpose-built for running the official Grok Build CLI (`grok`) on Android (aarch64).  
+Automatic DNS patching · offline full TUI · Production Bible workflows · Phase 1 Termux bridge.
 
-> **Status**:  
-> **Phase 1** — Native Termux integration + enhanced installer → **live**  
-> **Phase 2** — Standalone Android APK (Kotlin + Compose) → **scaffolded & building**
+> **Status (v0.3.0)**  
+> **Phase 1** — Termux native installer → **live**  
+> **Phase 2** — Standalone Compose APK → **beta feature-complete**
 
-## Quick Start — Phase 1 (Recommended today)
+## Quick Start — Phase 1 (Termux)
 
-1. Install **Termux** from [F-Droid](https://f-droid.org/packages/com.termux/) (not Play Store).
-2. Open Termux and run:
+1. Install **Termux** from [F-Droid](https://f-droid.org/packages/com.termux/).
+2. Run:
 
 ```bash
 pkg update -y && pkg install -y curl git python
 curl -fsSL https://raw.githubusercontent.com/FineComputer14451/GrokTerm/main/scripts/install-native.sh | bash
 ```
 
-3. Authenticate:
+3. Authenticate and launch:
 
 ```bash
-export XAI_API_KEY="xai-..."   # recommended on mobile
+export XAI_API_KEY="xai-..."
 grok
 ```
 
-## Phase 2 — Android App Scaffold
+## Phase 2 — Android App (v0.3.0)
 
-The `android/` directory contains a complete, modern Jetpack Compose project:
+Open the `android/` folder in Android Studio.
 
-- Material3 dark theme (cyan accent on near-black)
-- Home / Terminal / Settings screens
-- `GrokBinaryManager` + Kotlin DNS path patcher (same 16-byte technique)
-- Encrypted API key storage
-- Basic interactive shell (ready to be upgraded to full VT emulator)
+**Before first build**, vendor xterm.js assets:
 
-**Open in Android Studio**: open the `android/` folder → Gradle sync → Run.
+```bash
+cd android/app/src/main/assets/xterm
+curl -L -o xterm.min.js           https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js
+curl -L -o xterm.min.css          https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css
+curl -L -o addon-fit.min.js       https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js
+curl -L -o addon-web-links.min.js https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js
+```
 
-See [android/README.md](android/README.md) for details and next priorities.
+Then Gradle sync → Run on a physical **aarch64** device.
+
+### App capabilities
+
+| Area | Features |
+|------|----------|
+| Binary | Download latest from x.ai/cli + auto DNS patch |
+| Terminal | Offline xterm.js TUI · Shell / Grok modes |
+| Auth | Encrypted API key storage + env injection |
+| Projects | SAF picker · DocumentFile browser · text preview |
+| Actions | Grok · Plan · Headless `-p` · Resume |
+| Bridge | Open in Termux (RUN_COMMAND) / F-Droid install |
+| UX | Onboarding · adaptive icon · Material3 dark |
+
+See [CHANGELOG.md](CHANGELOG.md) and [android/README.md](android/README.md).
 
 ## Architecture
 
 ```
 GrokTerm/
-├── scripts/                  # Phase 1 Termux native installer + DNS patcher
-├── android/                  # Phase 2 Compose APK scaffold
-│   └── app/src/main/java/... 
-│       ├── data/             # GrokBinaryManager, ApiKeyStore, DnsPatcher
-│       └── ui/               # Screens + theme + navigation
+├── scripts/           # Phase 1 Termux installer + DNS patcher
+├── android/           # Phase 2 Compose APK
 ├── docs/ARCHITECTURE.md
+├── CHANGELOG.md
 └── README.md
 ```
 
 ## Requirements
 
 - aarch64 / arm64 Android device
-- SuperGrok or valid `XAI_API_KEY`
+- SuperGrok / valid `XAI_API_KEY`
 - Termux (F-Droid) for Phase 1
-
-## Credits
-
-- Official Grok Build by xAI (open source: `xai-org/grok-build`)
-- DNS patch technique pioneered in community Termux ports
-- Termux project
 
 ## License
 
@@ -71,5 +79,4 @@ MIT
 
 ---
 
-**GrokTerm** is an independent community project. Not affiliated with or endorsed by xAI.  
-Built for the Grok Imagine Cinematic Studio community and mobile power users.
+**GrokTerm** is an independent community project. Not affiliated with or endorsed by xAI.

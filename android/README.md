@@ -1,23 +1,43 @@
-# GrokTerm Android (Phase 2)
+# GrokTerm Android — v0.3.0
 
-Kotlin + Jetpack Compose app for running Grok Build on Android.
+Jetpack Compose app for Grok Build on Android.
 
-## Setup
+## Build
 
-1. Open `android/` in Android Studio
-2. Vendor xterm.js into `app/src/main/assets/xterm/` (see curl commands in git history / prior README)
-3. Run on **aarch64** device
+1. Open this `android/` folder in Android Studio
+2. **Vendor xterm.js** (required once):
 
-## Features
+```bash
+cd app/src/main/assets/xterm
+curl -L -o xterm.min.js           https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js
+curl -L -o xterm.min.css          https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css
+curl -L -o addon-fit.min.js       https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js
+curl -L -o addon-web-links.min.js https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js
+```
 
-- Adaptive icon + first-run onboarding
-- Official aarch64 binary download + DNS patch
-- Offline xterm.js full TUI
-- SAF project picker + DocumentFile browser
-- **Text file preview** (md, txt, json, yaml, source code, …) up to 512 KB
+3. Gradle sync → Run on physical **aarch64** device
+
+## Release build
+
+```bash
+./gradlew :app:assembleRelease
+```
+
+- `minifyEnabled` + `shrinkResources` on
+- Rules in `app/proguard-rules.pro` (WebView JS bridge, Tink, DataStore)
+
+## Feature map
+
+- Download / update official aarch64 binary + DNS patch
+- Offline xterm.js TUI (Shell + Grok)
+- Encrypted API key
+- SAF project picker + DocumentFile browser + text preview
 - Quick Actions: Grok · Plan · Headless · Resume
-- Termux Phase 1 bridge (RUN_COMMAND / launch / F-Droid)
+- Termux bridge
+- Onboarding + adaptive icon
 
-## Next
+## Notes
 
-- Release polish (version, ProGuard, changelog)
+- minSdk 28 · targetSdk 35 · versionName **0.3.0**
+- Internet required for binary download and Grok network calls
+- Grant Termux RUN_COMMAND for GrokTerm to auto-start sessions in Phase 1
