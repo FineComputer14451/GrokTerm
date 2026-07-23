@@ -6,12 +6,10 @@ Kotlin + Jetpack Compose scaffold for a Termux-like experience focused on Grok B
 
 1. Clone the repo
 2. Open the `android/` folder as a project
-3. **Vendor xterm.js assets** (required once — see below)
-4. Let Gradle sync → Run on a physical **aarch64** device
+3. **Vendor xterm.js assets** (see below)
+4. Gradle sync → Run on a physical **aarch64** device
 
-## Vendor xterm.js (offline / production)
-
-The terminal is fully offline-capable. You must place the JS/CSS files once:
+## Vendor xterm.js (offline)
 
 ```bash
 cd android/app/src/main/assets/xterm
@@ -22,42 +20,30 @@ curl -L -o addon-fit.min.js       https://cdn.jsdelivr.net/npm/@xterm/addon-fit@
 curl -L -o addon-web-links.min.js https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js
 ```
 
-See `assets/xterm/README.md` for details. After this, the terminal UI needs no network.
-
 ## Current capabilities
 
-- Dark Material3 theme (Grok-inspired cyan on near-black)
-- Home screen with status + binary check/patch
-- **Full TUI Terminal** powered by **xterm.js** (offline):
-  - Proper ANSI colors, cursor, mouse support, resize
-  - Dual mode: **Shell** and **Grok** (direct binary launch)
-  - Automatic `XAI_API_KEY` injection
-  - Clean process lifecycle
-- Settings with encrypted API key storage
-- `GrokBinaryManager` + 16-byte DNS path patcher
+- Dark Material3 theme
+- **One-tap Download Grok Binary** — resolves latest from `https://x.ai/cli/stable`, downloads `linux-aarch64` musl binary (with GCS fallback), applies DNS patch automatically
+- Full TUI via offline xterm.js
+- Dual Shell / Grok mode
+- Encrypted API key storage + automatic injection
+- Progress reporting during download
 
-## Terminal architecture
+## Binary download flow
 
-```
-TerminalScreen
-  └── XtermTerminal (WebView → file:///android_asset/xterm/index.html)
-        ↕ JavascriptInterface bridge
-  └── Process (Shell or patched grok binary)
-```
+1. GET `https://x.ai/cli/stable` → version string
+2. GET `https://x.ai/cli/grok-<ver>-linux-aarch64`
+   (fallback: `storage.googleapis.com/grok-build-public-artifacts/cli/...`)
+3. Write to app private storage → set executable → apply 16-byte DNS patch
 
-## Next implementation priorities
+## Next priorities
 
-1. Robust binary downloader (mirror official install.sh)
-2. SAF / file browser for Production Bibles & skills
-3. Quick-action tiles (Plan mode, headless `-p`, resume)
-4. Adaptive icons + first-run onboarding
-5. Optional deep-link bridge to Phase 1 Termux environment
+1. SAF / file browser for Production Bibles & skills
+2. Quick-action tiles (Plan mode, headless, resume)
+3. Adaptive icons + first-run onboarding
+4. Optional Termux deep-link bridge
 
 ## Build notes
 
-- minSdk 28, targetSdk 35, compileSdk 35
-- Java 17 / Kotlin 2.0
-- Compose BOM 2024.10.01
-
-Binary expected at app private `files/grok/bin/grok`.  
-Use Phase 1 Termux installer or place a known-good aarch64 musl binary.
+- minSdk 28, targetSdk 35
+- Internet permission required for binary download + Grok network calls
