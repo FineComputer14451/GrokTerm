@@ -10,19 +10,18 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * xterm.js powered terminal surface.
+ * xterm.js powered terminal surface — fully offline capable.
  *
- * Provides proper VT / ANSI rendering, colors, mouse support and resize handling
- * so that Grok Build's full TUI works correctly.
+ * Loads from `file:///android_asset/xterm/index.html`.
+ * Vendor the JS/CSS files into `app/src/main/assets/xterm/` (see assets/xterm/README.md).
  *
  * Communication:
  * - Kotlin → JS  : term.write(data)
- * - JS → Kotlin  : AndroidBridge.onData(data)  (user keystrokes)
+ * - JS → Kotlin  : AndroidBridge.onData(data)
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -37,13 +36,17 @@ fun XtermTerminal(
     val controller = remember {
         object : XtermController {
             override fun write(data: String) {
+                // Escape for safe JS string injection
                 val escaped = data
                     .replace("\\", "\\\\")
                     .replace("'", "\\'")
                     .replace("\n", "\\n")
                     .replace("\r", "\\r")
                     .replace("\u001b", "\\x1b")
-                webViewRef?.evaluateJavascript("window.term && window.term.write('$escaped');", null)
+                webViewRef?.evaluateJavascript(
+                    "window.term && window.term.write('$escaped');",
+                    null
+                )
             }
 
             override fun clear() {
@@ -69,10 +72,10 @@ fun XtermTerminal(
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.allowFileAccess = true
+                settings.allowContentAccess = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-                // Bridge for keystrokes coming from xterm.js
+                // Bridge
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun onData(data: String) {
@@ -91,19 +94,12 @@ fun XtermTerminal(
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
-                        // Safety: ensure focus after load
                         view?.evaluateJavascript("window.term && window.term.focus();", null)
                     }
                 }
 
-                // Load the terminal page (CDN for scaffold; vendor later for offline)
-                loadDataWithBaseURL(
-                    "https://cdn.jsdelivr.net",
-                    XTERM_HTML,
-                    "text/html",
-                    "UTF-8",
-                    null
-                )
+                // Fully offline — load from packaged assets
+                loadUrl("file:///android_asset/xterm/index.html")
 
                 webViewRef = this
             }
@@ -127,108 +123,3 @@ interface XtermController {
     fun clear()
     fun focus()
 }
-
-/**
- * Minimal self-contained xterm.js page.
- * Uses jsDelivr CDN for the scaffold. For production / offline, vendor the assets
- * into app/src/main/assets/ and change the load method.
- */
-private const val XTERM_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" />
-  <style>
-    html, body, #terminal {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: #0a0a0a;
-      overflow: hidden;
-    }
-    .xterm {
-      height: 100%;
-    }
-    .xterm-viewport {
-      overflow-y: auto !important;
-    }
-  </style>
-</head>
-<body>
-  <div id="terminal"></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
-
-  <script>
-    const term = new Terminal({
-      cursorBlink: true,
-      cursorStyle: 'block',
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      fontSize: 13,
-      lineHeight: 1.2,
-      theme: {
-        background: '#0a0a0a',
-        foreground: '#00e5ff',
-        cursor: '#00e5ff',
-        selectionBackground: '#00363f',
-        black: '#000000',
-        red: '#ef5350',
-        green: '#66bb6a',
-        yellow: '#ffee58',
-        blue: '#42a5f5',
-        magenta: '#ab47bc',
-        cyan: '#26c6da',
-        white: '#e0e0e0',
-        brightBlack: '#546e7a',
-        brightRed: '#ef9a9a',
-        brightGreen: '#a5d6a7',
-        brightYellow: '#fff59d',
-        brightBlue: '#90caf9',
-        brightMagenta: '#ce93d8',
-        brightCyan: '#80deea',
-        brightWhite: '#fafafa'
-      },
-      allowProposedApi: true,
-      scrollback: 5000
-    });
-
-    const fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
-    term.loadAddon(new WebLinksAddon.WebLinksAddon());
-
-    term.open(document.getElementById('terminal'));
-    fitAddon.fit();
-
-    // Forward user input to Android
-    term.onData(data => {
-      if (window.AndroidBridge) {
-        AndroidBridge.onData(data);
-      }
-    });
-
-    // Expose for Kotlin
-    window.term = term;
-    window.fitAddon = fitAddon;
-
-    // Notify Android that terminal is ready
-    if (window.AndroidBridge) {
-      AndroidBridge.onReady();
-    }
-
-    // Handle resize
-    window.addEventListener('resize', () => {
-      fitAddon.fit();
-    });
-
-    // Initial fit after a short delay (layout settle)
-    setTimeout(() => fitAddon.fit(), 100);
-    setTimeout(() => fitAddon.fit(), 400);
-  </script>
-</body>
-</html>
-"""
