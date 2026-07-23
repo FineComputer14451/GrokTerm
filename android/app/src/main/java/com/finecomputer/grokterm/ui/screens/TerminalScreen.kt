@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import com.finecomputer.grokterm.data.ApiKeyStore
 import com.finecomputer.grokterm.data.GrokBinaryManager
+import com.finecomputer.grokterm.data.ProjectStore
 import com.finecomputer.grokterm.ui.terminal.XtermController
 import com.finecomputer.grokterm.ui.terminal.XtermTerminal
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 
@@ -36,7 +38,7 @@ enum class TerminalMode {
  * - Dual mode: Shell / Grok
  * - Direct launch of patched Grok binary
  * - XAI_API_KEY injection
- * - Proper ANSI / color / mouse / resize support via xterm.js
+ * - Uses selected SAF project as working directory when a real path can be resolved
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +48,7 @@ fun TerminalScreen(onBack: () -> Unit) {
 
     val binaryManager = remember { GrokBinaryManager(context) }
     val apiKeyStore = remember { ApiKeyStore(context) }
+    val projectStore = remember { ProjectStore(context) }
 
     var mode by remember { mutableStateOf(TerminalMode.SHELL) }
     var process by remember { mutableStateOf<Process?>(null) }
@@ -84,7 +87,6 @@ fun TerminalScreen(onBack: () -> Unit) {
                 } else {
                     if (targetMode == TerminalMode.GROK) {
                         writeToTerm("\r\n\u001b[33m[GrokTerm]\u001b[0m Grok binary not ready — falling back to shell.\r\n")
-                        writeToTerm("Place aarch64 musl binary or use Phase 1 Termux installer.\r\n")
                     }
                     writeToTerm("\r\n\u001b[36m[GrokTerm]\u001b[0m Shell session started.\r\n")
                     ProcessBuilder("/system/bin/sh", "-")
@@ -102,7 +104,24 @@ fun TerminalScreen(onBack: () -> Unit) {
                     writeToTerm("\u001b[36m[GrokTerm]\u001b[0m XAI_API_KEY injected.\r\n")
                 }
 
-                pb.directory(context.filesDir)
+                // Prefer the user-selected project directory when we can resolve a real path
+                var workDir = context.filesDir
+                val projectUri = projectStore.getProjectUri()
+                if (projectUri != null) {
+                    val resolved = projectStore.tryResolveFilesystemPath(projectUri)
+                    if (resolved != null) {
+                        val dir = File(resolved)
+                        if (dir.exists() && dir.isDirectory) {
+                            workDir = dir
+                            writeToTerm("\u001b[36m[GrokTerm]\u001b[0m Working directory: $resolved\r\n")
+                        } else {
+                            writeToTerm("\u001b[33m[GrokTerm]\u001b[0m Project path not accessible as filesystem dir, using app files.\r\n")
+                        }
+                    } else {
+                        writeToTerm("\u001b[33m[GrokTerm]\u001b[0m Project is pure SAF URI — using app files as cwd.\r\n")
+                    }
+                }
+                pb.directory(workDir)
 
                 val p = pb.start()
                 process = p
@@ -113,7 +132,6 @@ fun TerminalScreen(onBack: () -> Unit) {
                     controller?.focus()
                 }
 
-                // Stream raw output to xterm (preserves ANSI)
                 val reader = BufferedReader(InputStreamReader(p.inputStream, Charsets.UTF_8))
                 val buffer = CharArray(4096)
 
@@ -197,9 +215,7 @@ fun TerminalScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { startSession(TerminalMode.GROK) }
-                    ) {
+                    IconButton(onClick = { startSession(TerminalMode.GROK) }) {
                         Icon(
                             Icons.Default.PlayArrow,
                             contentDescription = "Start Grok",
@@ -229,7 +245,6 @@ fun TerminalScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 onReady = { ctrl ->
                     controller = ctrl
-                    // Auto-start shell once the terminal is ready
                     startSession(TerminalMode.SHELL)
                 },
                 onUserInput = { data -> onUserInput(data) }
