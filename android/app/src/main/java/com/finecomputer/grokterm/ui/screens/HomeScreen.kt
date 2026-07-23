@@ -1,10 +1,15 @@
 package com.finecomputer.grokterm.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.finecomputer.grokterm.data.ApiKeyStore
 import com.finecomputer.grokterm.data.GrokBinaryManager
+import com.finecomputer.grokterm.data.ProjectStore
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,6 +32,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val binaryManager = remember { GrokBinaryManager(context) }
     val apiKeyStore = remember { ApiKeyStore(context) }
+    val projectStore = remember { ProjectStore(context) }
     val scope = rememberCoroutineScope()
 
     var status by remember { mutableStateOf("Checking Grok binary…") }
@@ -33,6 +40,7 @@ fun HomeScreen(
     var hasKey by remember { mutableStateOf(false) }
     var isDownloading by remember { mutableStateOf(false) }
     var progressText by remember { mutableStateOf("") }
+    var projectName by remember { mutableStateOf<String?>(null) }
 
     fun refreshStatus() {
         isReady = binaryManager.isReady
@@ -46,6 +54,24 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         refreshStatus()
+        projectName = projectStore.getProjectName()
+    }
+
+    // SAF directory picker
+    val openTreeLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                // Best-effort display name from last path segment
+                val name = uri.lastPathSegment
+                    ?.substringAfterLast(":")
+                    ?.replace("%2F", "/")
+                    ?: "Selected folder"
+                projectStore.setProject(uri, name)
+                projectName = name
+            }
+        }
     }
 
     Scaffold(
@@ -69,7 +95,7 @@ fun HomeScreen(
                 .padding(padding)
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
                 text = "Grok Build\non Android",
@@ -78,6 +104,7 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
+            // Status card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -86,10 +113,10 @@ fun HomeScreen(
             ) {
                 Column(Modifier = Modifier.padding(16.dp)) {
                     Text("Status", style = MaterialTheme.typography.labelSmall)
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(status, style = MaterialTheme.typography.bodyLarge)
                     if (progressText.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             progressText,
                             style = MaterialTheme.typography.bodyMedium,
@@ -99,11 +126,55 @@ fun HomeScreen(
                 }
             }
 
+            // Project / Production Bible card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(Modifier = Modifier.padding(16.dp)) {
+                    Text("Project / Production Bible", style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        projectName ?: "No folder selected",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                openTreeLauncher.launch(null)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (projectName == null) "Select folder" else "Change")
+                        }
+                        if (projectName != null) {
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        projectStore.clearProject()
+                                        projectName = null
+                                    }
+                                }
+                            ) {
+                                Text("Clear")
+                            }
+                        }
+                    }
+                }
+            }
+
             Button(
                 onClick = onOpenTerminal,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .height(52.dp)
             ) {
                 Icon(Icons.Default.Terminal, contentDescription = null)
                 Spacer(Modifier.width(12.dp))
@@ -119,14 +190,12 @@ fun HomeScreen(
                         val result = binaryManager.downloadOrUpdate { p ->
                             progressText = buildString {
                                 append(p.stage)
-                                if (p.version != null) append(" (")
-                                    .append(p.version).append(")")
+                                if (p.version != null) append(" (").append(p.version).append(")")
                                 if (p.totalBytes > 0) {
                                     val pct = (p.bytesDownloaded * 100 / p.totalBytes).toInt()
                                     append(" · ").append(pct).append("%")
                                 } else if (p.bytesDownloaded > 0) {
-                                    append(" · ")
-                                        .append(p.bytesDownloaded / 1024).append(" KB")
+                                    append(" · ").append(p.bytesDownloaded / 1024).append(" KB")
                                 }
                             }
                         }
@@ -161,8 +230,8 @@ fun HomeScreen(
             Spacer(Modifier.weight(1f))
 
             Text(
-                text = "Downloads the official aarch64 musl binary from x.ai/cli\n" +
-                        "and applies the DNS patch automatically.",
+                text = "Select a Production Bible or skills folder via SAF.\n" +
+                        "It will be remembered across restarts.",
                 style = MaterialTheme.typography.labelSmall,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
