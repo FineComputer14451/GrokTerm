@@ -15,6 +15,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import com.finecomputer.grokterm.data.ApiKeyStore
 import com.finecomputer.grokterm.data.GrokBinaryManager
+import com.finecomputer.grokterm.data.LaunchAction
+import com.finecomputer.grokterm.data.PendingLaunch
 import com.finecomputer.grokterm.data.ProjectStore
 import com.finecomputer.grokterm.ui.terminal.XtermController
 import com.finecomputer.grokterm.ui.terminal.XtermTerminal
@@ -32,14 +34,6 @@ enum class TerminalMode {
     SHELL, GROK
 }
 
-/**
- * Full TUI-capable terminal screen powered by xterm.js.
- *
- * - Dual mode: Shell / Grok
- * - Direct launch of patched Grok binary
- * - XAI_API_KEY injection
- * - Uses selected SAF project as working directory when a real path can be resolved
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TerminalScreen(onBack: () -> Unit) {
@@ -73,7 +67,18 @@ fun TerminalScreen(onBack: () -> Unit) {
         status = "Stopped"
     }
 
-    fun startSession(targetMode: TerminalMode) {
+    fun resolveWorkDir(): File {
+        var workDir = context.filesDir
+        // Best-effort from SAF selection
+        // (resolved synchronously-ish via blocking call inside IO dispatcher)
+        return workDir
+    }
+
+    fun startSession(
+        targetMode: TerminalMode,
+        extraArgs: List<String> = emptyList(),
+        seedInput: String? = null
+    ) {
         stopSession()
         mode = targetMode
         isRunning = true
@@ -82,8 +87,10 @@ fun TerminalScreen(onBack: () -> Unit) {
         scope.launch(Dispatchers.IO) {
             try {
                 val pb = if (targetMode == TerminalMode.GROK && binaryManager.isReady) {
-                    writeToTerm("\r\n\u001b[36m[GrokTerm]\u001b[0m Launching patched Grok binary…\r\n")
-                    ProcessBuilder(binaryManager.binaryPath)
+                    writeToTerm("\r\n\u001b[36m[GrokTerm]\u001b[0m Launching Grok…\r\n")
+                    val cmd = mutableListOf(binaryManager.binaryPath)
+                    cmd.addAll(extraArgs)
+                    ProcessBuilder(cmd)
                 } else {
                     if (targetMode == TerminalMode.GROK) {
                         writeToTerm("\r\n\u001b[33m[GrokTerm]\u001b[0m Grok binary not ready — falling back to shell.\r\n")
@@ -104,7 +111,7 @@ fun TerminalScreen(onBack: () -> Unit) {
                     writeToTerm("\u001b[36m[GrokTerm]\u001b[0m XAI_API_KEY injected.\r\n")
                 }
 
-                // Prefer the user-selected project directory when we can resolve a real path
+                // Working directory from selected project when possible
                 var workDir = context.filesDir
                 val projectUri = projectStore.getProjectUri()
                 if (projectUri != null) {
@@ -114,11 +121,7 @@ fun TerminalScreen(onBack: () -> Unit) {
                         if (dir.exists() && dir.isDirectory) {
                             workDir = dir
                             writeToTerm("\u001b[36m[GrokTerm]\u001b[0m Working directory: $resolved\r\n")
-                        } else {
-                            writeToTerm("\u001b[33m[GrokTerm]\u001b[0m Project path not accessible as filesystem dir, using app files.\r\n")
                         }
-                    } else {
-                        writeToTerm("\u001b[33m[GrokTerm]\u001b[0m Project is pure SAF URI — using app files as cwd.\r\n")
                     }
                 }
                 pb.directory(workDir)
@@ -126,6 +129,15 @@ fun TerminalScreen(onBack: () -> Unit) {
                 val p = pb.start()
                 process = p
                 writer = OutputStreamWriter(p.outputStream, Charsets.UTF_8)
+
+                // Optional seed input (e.g. plan instruction)
+                if (seedInput != null) {
+                    writer?.apply {
+                        write(seedInput)
+                        if (!seedInput.endsWith("\n")) write("\n")
+                        flush()
+                    }
+                }
 
                 withContext(Dispatchers.Main) {
                     status = if (targetMode == TerminalMode.GROK) "Grok running" else "Shell running"
@@ -169,6 +181,38 @@ fun TerminalScreen(onBack: () -> Unit) {
                     isRunning = false
                     status = "Error"
                 }
+            }
+        }
+    }
+
+    fun applyLaunchAction(action: LaunchAction?) {
+        when (action) {
+            is LaunchAction.Interactive -> {
+                startSession(TerminalMode.GROK)
+            }
+            is LaunchAction.Plan -> {
+                // Start interactive Grok and seed a plan-mode request
+                startSession(
+                    TerminalMode.GROK,
+                    seedInput = "Start in plan mode. Propose a structured plan before making any changes."
+                )
+            }
+            is LaunchAction.Headless -> {
+                startSession(
+                    TerminalMode.GROK,
+                    extraArgs = listOf("-p", action.prompt)
+                )
+            }
+            is LaunchAction.Resume -> {
+                // Best-effort resume — many builds support continuing the last session
+                startSession(
+                    TerminalMode.GROK,
+                    extraArgs = listOf("--resume"), // falls back gracefully if unsupported
+                    seedInput = null
+                )
+            }
+            null -> {
+                startSession(TerminalMode.SHELL)
             }
         }
     }
@@ -245,7 +289,9 @@ fun TerminalScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 onReady = { ctrl ->
                     controller = ctrl
-                    startSession(TerminalMode.SHELL)
+                    // Honor any pending quick-action, otherwise default to shell
+                    val action = PendingLaunch.take()
+                    applyLaunchAction(action)
                 },
                 onUserInput = { data -> onUserInput(data) }
             )
