@@ -1,15 +1,19 @@
 package com.finecomputer.grokterm.ui.screens
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +24,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.finecomputer.grokterm.data.ApiKeyStore
 import com.finecomputer.grokterm.data.GrokBinaryManager
+import com.finecomputer.grokterm.data.LaunchAction
+import com.finecomputer.grokterm.data.PendingLaunch
 import com.finecomputer.grokterm.data.ProjectStore
 import kotlinx.coroutines.launch
 
@@ -41,6 +47,8 @@ fun HomeScreen(
     var isDownloading by remember { mutableStateOf(false) }
     var progressText by remember { mutableStateOf("") }
     var projectName by remember { mutableStateOf<String?>(null) }
+    var showHeadlessDialog by remember { mutableStateOf(false) }
+    var headlessPrompt by remember { mutableStateOf("") }
 
     fun refreshStatus() {
         isReady = binaryManager.isReady
@@ -52,18 +60,21 @@ fun HomeScreen(
         }
     }
 
+    fun launch(action: LaunchAction) {
+        PendingLaunch.set(action)
+        onOpenTerminal()
+    }
+
     LaunchedEffect(Unit) {
         refreshStatus()
         projectName = projectStore.getProjectName()
     }
 
-    // SAF directory picker
     val openTreeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                // Best-effort display name from last path segment
                 val name = uri.lastPathSegment
                     ?.substringAfterLast(":")
                     ?.replace("%2F", "/")
@@ -72,6 +83,38 @@ fun HomeScreen(
                 projectName = name
             }
         }
+    }
+
+    if (showHeadlessDialog) {
+        AlertDialog(
+            onDismissRequest = { showHeadlessDialog = false },
+            title = { Text("Headless prompt") },
+            text = {
+                OutlinedTextField(
+                    value = headlessPrompt,
+                    onValueChange = { headlessPrompt = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("grok -p \"…\"") },
+                    placeholder = { Text("Explain this repo") },
+                    minLines = 3
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val p = headlessPrompt.trim()
+                        if (p.isNotEmpty()) {
+                            showHeadlessDialog = false
+                            launch(LaunchAction.Headless(p))
+                        }
+                    },
+                    enabled = headlessPrompt.isNotBlank()
+                ) { Text("Run") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHeadlessDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 
     Scaffold(
@@ -93,6 +136,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -104,12 +148,10 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            // Status card
+            // Status
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(Modifier = Modifier.padding(16.dp)) {
                     Text("Status", style = MaterialTheme.typography.labelSmall)
@@ -117,68 +159,96 @@ fun HomeScreen(
                     Text(status, style = MaterialTheme.typography.bodyLarge)
                     if (progressText.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            progressText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Text(progressText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
 
-            // Project / Production Bible card
+            // Project
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(Modifier = Modifier.padding(16.dp)) {
                     Text("Project / Production Bible", style = MaterialTheme.typography.labelSmall)
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        projectName ?: "No folder selected",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Text(projectName ?: "No folder selected", style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = {
-                                openTreeLauncher.launch(null)
-                            },
+                            onClick = { openTreeLauncher.launch(null) },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.FolderOpen, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(if (projectName == null) "Select folder" else "Change")
                         }
                         if (projectName != null) {
-                            TextButton(
-                                onClick = {
-                                    scope.launch {
-                                        projectStore.clearProject()
-                                        projectName = null
-                                    }
+                            TextButton(onClick = {
+                                scope.launch {
+                                    projectStore.clearProject()
+                                    projectName = null
                                 }
-                            ) {
-                                Text("Clear")
-                            }
+                            }) { Text("Clear") }
                         }
                     }
                 }
             }
 
+            // Quick Actions
+            Text(
+                "Quick Actions",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                QuickTile(
+                    icon = Icons.Default.PlayArrow,
+                    label = "Grok",
+                    enabled = isReady,
+                    modifier = Modifier.weight(1f),
+                    onClick = { launch(LaunchAction.Interactive) }
+                )
+                QuickTile(
+                    icon = Icons.AutoMirrored.Filled.List,
+                    label = "Plan",
+                    enabled = isReady,
+                    modifier = Modifier.weight(1f),
+                    onClick = { launch(LaunchAction.Plan) }
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                QuickTile(
+                    icon = Icons.Default.Terminal,
+                    label = "Headless",
+                    enabled = isReady,
+                    modifier = Modifier.weight(1f),
+                    onClick = { showHeadlessDialog = true }
+                )
+                QuickTile(
+                    icon = Icons.Default.Refresh,
+                    label = "Resume",
+                    enabled = isReady,
+                    modifier = Modifier.weight(1f),
+                    onClick = { launch(LaunchAction.Resume) }
+                )
+            }
+
             Button(
                 onClick = onOpenTerminal,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
+                modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
-                Icon(Icons.Default.Terminal, contentDescription = null)
+                Icon(Icons.Default.Terminal, null)
                 Spacer(Modifier.width(12.dp))
-                Text("Open Terminal")
+                Text("Open Terminal (Shell)")
             }
 
             Button(
@@ -202,40 +272,52 @@ fun HomeScreen(
                         isDownloading = false
                         progressText = ""
                         refreshStatus()
-                        status = if (result.isSuccess) {
-                            result.getOrNull() ?: "Ready"
-                        } else {
-                            "Download failed: ${result.exceptionOrNull()?.message}"
-                        }
+                        status = if (result.isSuccess) result.getOrNull() ?: "Ready"
+                        else "Download failed: ${result.exceptionOrNull()?.message}"
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isDownloading
             ) {
                 if (isDownloading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                     Spacer(Modifier.width(12.dp))
                     Text("Downloading…")
                 } else {
-                    Icon(Icons.Default.Download, contentDescription = null)
+                    Icon(Icons.Default.Download, null)
                     Spacer(Modifier.width(12.dp))
                     Text(if (isReady) "Update Grok Binary" else "Download Grok Binary")
                 }
             }
 
-            Spacer(Modifier.weight(1f))
-
             Text(
-                text = "Select a Production Bible or skills folder via SAF.\n" +
-                        "It will be remembered across restarts.",
+                text = "Plan / Headless / Resume require a downloaded binary.",
                 style = MaterialTheme.typography.labelSmall,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
+        }
+    }
+}
+
+@Composable
+private fun QuickTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(64.dp),
+        contentPadding = PaddingValues(8.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null)
+            Spacer(Modifier.height(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
