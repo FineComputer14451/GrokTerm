@@ -23,20 +23,21 @@ curl -L -o addon-web-links.min.js https://cdn.jsdelivr.net/npm/@xterm/addon-web-
 ## Current capabilities
 
 - Dark Material3 theme
-- One-tap **Download / Update Grok Binary** (official aarch64 musl + DNS patch)
+- One-tap **Download / Update Grok Binary**
 - Full TUI via offline xterm.js
 - Dual Shell / Grok mode + API key injection
-- **SAF Project / Production Bible picker**
-  - Select any folder (Bible, skills, repo)
-  - Persistable permission across restarts
-  - Used as working directory for Grok/Shell when a real filesystem path can be resolved
+- SAF Project / Production Bible picker (persistent)
+- **Quick Actions**
+  - **Grok** — interactive session
+  - **Plan** — interactive + seeded plan-mode instruction
+  - **Headless** — dialog → `grok -p "…"`
+  - **Resume** — best-effort `--resume`
 
 ## Next priorities
 
-1. Quick-action tiles (Plan mode, headless `-p`, resume)
-2. Adaptive icons + first-run onboarding
-3. Deeper DocumentFile browsing inside selected trees
-4. Optional Termux deep-link bridge
+1. Adaptive icons + first-run onboarding
+2. Deeper DocumentFile browser inside selected trees
+3. Optional Termux deep-link bridge
 
 ## Build notes
 
