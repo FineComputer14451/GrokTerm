@@ -1,6 +1,7 @@
 package com.finecomputer.grokterm.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -10,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -28,6 +30,7 @@ import com.finecomputer.grokterm.data.GrokBinaryManager
 import com.finecomputer.grokterm.data.LaunchAction
 import com.finecomputer.grokterm.data.PendingLaunch
 import com.finecomputer.grokterm.data.ProjectStore
+import com.finecomputer.grokterm.data.TermuxBridge
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,10 +54,12 @@ fun HomeScreen(
     var projectName by remember { mutableStateOf<String?>(null) }
     var showHeadlessDialog by remember { mutableStateOf(false) }
     var headlessPrompt by remember { mutableStateOf("") }
+    var termuxInstalled by remember { mutableStateOf(false) }
 
     fun refreshStatus() {
         isReady = binaryManager.isReady
         hasKey = apiKeyStore.hasApiKey()
+        termuxInstalled = TermuxBridge.isTermuxInstalled(context)
         status = when {
             isReady && hasKey -> "Grok binary ready · API key set"
             isReady -> "Grok binary ready · set API key in Settings"
@@ -65,6 +70,32 @@ fun HomeScreen(
     fun launch(action: LaunchAction) {
         PendingLaunch.set(action)
         onOpenTerminal()
+    }
+
+    fun openTermux() {
+        scope.launch {
+            val uri = projectStore.getProjectUri()
+            val workDir = uri?.let { projectStore.tryResolveFilesystemPath(it) }
+            val cmd = TermuxBridge.defaultGrokCommand(workDir)
+            val ok = if (termuxInstalled) {
+                TermuxBridge.runInTermux(context, cmd, workDir)
+            } else {
+                false
+            }
+            if (!ok) {
+                if (!termuxInstalled) {
+                    Toast.makeText(context, "Termux not installed — opening F-Droid", Toast.LENGTH_LONG).show()
+                    TermuxBridge.openTermuxInstallPage(context)
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Could not run command — launching Termux app",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    TermuxBridge.launchTermux(context)
+                }
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -162,6 +193,14 @@ fun HomeScreen(
                         Spacer(Modifier.height(6.dp))
                         Text(progressText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                     }
+                    if (termuxInstalled) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Termux detected (Phase 1 bridge available)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
@@ -229,6 +268,15 @@ fun HomeScreen(
                 Text("Open Terminal (Shell)")
             }
 
+            OutlinedButton(
+                onClick = { openTermux() },
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Icon(Icons.Default.OpenInNew, null)
+                Spacer(Modifier.width(12.dp))
+                Text(if (termuxInstalled) "Open in Termux (Phase 1)" else "Install Termux (F-Droid)")
+            }
+
             Button(
                 onClick = {
                     if (isDownloading) return@Button
@@ -269,7 +317,8 @@ fun HomeScreen(
             }
 
             Text(
-                text = "Browse opens a DocumentFile tree for your selected Bible / skills folder.",
+                text = "Phase 1 Termux = full native grok. Phase 2 = in-app TUI.\n" +
+                        "RUN_COMMAND must be allowed in Termux settings for auto-start.",
                 style = MaterialTheme.typography.labelSmall,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
