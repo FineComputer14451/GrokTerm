@@ -9,6 +9,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.finecomputer.grokterm.data.OnboardingStore
+import com.finecomputer.grokterm.ui.screens.FileBrowserScreen
 import com.finecomputer.grokterm.ui.screens.HomeScreen
 import com.finecomputer.grokterm.ui.screens.OnboardingScreen
 import com.finecomputer.grokterm.ui.screens.SettingsScreen
@@ -19,6 +20,7 @@ sealed class Screen(val route: String) {
     data object Home : Screen("home")
     data object Terminal : Screen("terminal")
     data object Settings : Screen("settings")
+    data object Browser : Screen("browser")
 }
 
 @Composable
@@ -27,7 +29,6 @@ fun GrokTermNavHost() {
     val onboardingStore = remember { OnboardingStore(context) }
     val onboardingComplete by onboardingStore.isCompleteFlow.collectAsState(initial = null)
 
-    // Wait until we know the flag (null = still loading)
     if (onboardingComplete == null) return
 
     val navController = rememberNavController()
@@ -46,7 +47,8 @@ fun GrokTermNavHost() {
         composable(Screen.Home.route) {
             HomeScreen(
                 onOpenTerminal = { navController.navigate(Screen.Terminal.route) },
-                onOpenSettings = { navController.navigate(Screen.Settings.route) }
+                onOpenSettings = { navController.navigate(Screen.Settings.route) },
+                onOpenBrowser = { navController.navigate(Screen.Browser.route) }
             )
         }
         composable(Screen.Terminal.route) {
@@ -56,6 +58,11 @@ fun GrokTermNavHost() {
         }
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Browser.route) {
+            FileBrowserScreen(
                 onBack = { navController.popBackStack() }
             )
         }
