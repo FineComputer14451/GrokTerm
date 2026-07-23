@@ -4,7 +4,6 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- For shared project folders / Production Bibles -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -12,6 +11,17 @@
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
+
+    <!-- Termux RUN_COMMAND (user must also grant in Termux settings) -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <!-- Package visibility for Termux detection (Android 11+) -->
+    <queries>
+        <package android:name="com.termux" />
+        <intent>
+            <action android:name="com.termux.RUN_COMMAND" />
+        </intent>
+    </queries>
 
     <application
         android:name=".GrokTermApp"
