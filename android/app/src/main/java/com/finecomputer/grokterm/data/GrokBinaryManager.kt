@@ -5,17 +5,10 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.net.URL
 
 /**
  * Manages the Grok Build static binary inside the app's private storage.
- * Handles download (when URL known), DNS path patching, and execution readiness.
- *
- * Note: Official binary download URL is obtained via the install script.
- * For production, prefer shipping a known-good binary or using the
- * Termux Phase 1 path + inter-process launch, or implement a robust
- * fetcher that follows the official install.sh logic.
+ * Handles download via GrokBinaryDownloader, DNS path patching, and readiness.
  */
 class GrokBinaryManager(private val context: Context) {
 
@@ -24,6 +17,8 @@ class GrokBinaryManager(private val context: Context) {
     private val binaryDir = File(filesDir, "grok/bin").also { it.mkdirs() }
     private val binaryFile = File(binaryDir, "grok")
     private val dnsFile = File(context.getExternalFilesDir(null), ".grokdns")
+
+    private val downloader = GrokBinaryDownloader(context)
 
     val isReady: Boolean
         get() = binaryFile.exists() && binaryFile.canExecute()
@@ -45,14 +40,13 @@ class GrokBinaryManager(private val context: Context) {
     }
 
     /**
-     * Apply the 16-byte DNS path patch used by the Termux native approach.
-     * /etc/resolv.conf  →  a writable path of exactly the same length.
+     * Apply the 16-byte DNS path patch.
+     * /etc/resolv.conf → /sdcard/.grokdns  (exactly 16 bytes)
      */
     suspend fun applyDnsPatch(): Boolean = withContext(Dispatchers.IO) {
         if (!binaryFile.exists()) return@withContext false
 
         val original = "/etc/resolv.conf".toByteArray(Charsets.US_ASCII)
-        // Must be exactly 16 bytes. Adjust path if needed to keep length.
         val replacement = "/sdcard/.grokdns".toByteArray(Charsets.US_ASCII)
 
         if (original.size != 16 || replacement.size != 16) {
@@ -63,13 +57,11 @@ class GrokBinaryManager(private val context: Context) {
         val data = binaryFile.readBytes()
         val idx = data.indexOf(original)
         if (idx < 0) {
-            // Already patched or binary changed
             val already = data.indexOf(replacement) >= 0
-            Log.i(tag, if (already) "Already patched" else "String not found — upstream binary may have changed")
+            Log.i(tag, if (already) "Already patched" else "String not found — upstream may have changed")
             return@withContext already
         }
 
-        // Backup
         val bak = File(binaryFile.absolutePath + ".orig")
         if (!bak.exists()) binaryFile.copyTo(bak, overwrite = false)
 
@@ -81,21 +73,18 @@ class GrokBinaryManager(private val context: Context) {
     }
 
     /**
-     * Placeholder for future official binary download.
-     * Currently expects the user to place a binary or use Phase 1 Termux install
-     * and share via storage, or implement full fetch logic mirroring install.sh.
+     * Download (or re-download) the latest stable aarch64 binary and patch it.
      */
-    suspend fun downloadOrUpdate(): Result<Unit> = withContext(Dispatchers.IO) {
-        // TODO: Implement robust download following https://x.ai/cli/install.sh logic
-        // For now we only ensure the directory and DNS file exist.
-        ensureDnsFile()
-        if (isReady) {
-            applyDnsPatch()
-            Result.success(Unit)
-        } else {
-            Result.failure(IllegalStateException(
-                "Grok binary not present. Use Phase 1 Termux installer or place aarch64 musl binary at ${binaryFile.absolutePath}"
-            ))
+    suspend fun downloadOrUpdate(
+        onProgress: (GrokBinaryDownloader.Progress) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
+        when (val result = downloader.downloadLatest(onProgress)) {
+            is GrokBinaryDownloader.Result.Success -> {
+                Result.success("Grok ${result.version} ready at ${result.path}")
+            }
+            is GrokBinaryDownloader.Result.Failure -> {
+                Result.failure(Exception(result.message, result.cause))
+            }
         }
     }
 
