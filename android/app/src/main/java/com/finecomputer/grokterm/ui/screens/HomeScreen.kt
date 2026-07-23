@@ -4,8 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,18 +28,24 @@ fun HomeScreen(
     val apiKeyStore = remember { ApiKeyStore(context) }
     val scope = rememberCoroutineScope()
 
-    var status by remember { mutableStateOf("Checking Grok binary...") }
+    var status by remember { mutableStateOf("Checking Grok binary…") }
     var isReady by remember { mutableStateOf(false) }
     var hasKey by remember { mutableStateOf(false) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var progressText by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
+    fun refreshStatus() {
         isReady = binaryManager.isReady
         hasKey = apiKeyStore.hasApiKey()
         status = when {
             isReady && hasKey -> "Grok binary ready · API key set"
-            isReady -> "Grok binary ready · API key missing (Settings)"
-            else -> "Grok binary not found — use Phase 1 Termux install or place binary"
+            isReady -> "Grok binary ready · set API key in Settings"
+            else -> "Grok binary not present"
         }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshStatus()
     }
 
     Scaffold(
@@ -83,6 +88,14 @@ fun HomeScreen(
                     Text("Status", style = MaterialTheme.typography.labelSmall)
                     Spacer(Modifier.height(8.dp))
                     Text(status, style = MaterialTheme.typography.bodyLarge)
+                    if (progressText.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            progressText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
@@ -90,39 +103,66 @@ fun HomeScreen(
                 onClick = onOpenTerminal,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                enabled = true // always allow terminal; binary optional for plain shell
+                    .height(56.dp)
             ) {
                 Icon(Icons.Default.Terminal, contentDescription = null)
                 Spacer(Modifier.width(12.dp))
                 Text("Open Terminal")
             }
 
-            OutlinedButton(
+            Button(
                 onClick = {
+                    if (isDownloading) return@Button
                     scope.launch {
-                        status = "Checking / patching..."
-                        val result = binaryManager.downloadOrUpdate()
-                        isReady = binaryManager.isReady
+                        isDownloading = true
+                        progressText = "Starting…"
+                        val result = binaryManager.downloadOrUpdate { p ->
+                            progressText = buildString {
+                                append(p.stage)
+                                if (p.version != null) append(" (")
+                                    .append(p.version).append(")")
+                                if (p.totalBytes > 0) {
+                                    val pct = (p.bytesDownloaded * 100 / p.totalBytes).toInt()
+                                    append(" · ").append(pct).append("%")
+                                } else if (p.bytesDownloaded > 0) {
+                                    append(" · ")
+                                        .append(p.bytesDownloaded / 1024).append(" KB")
+                                }
+                            }
+                        }
+                        isDownloading = false
+                        progressText = ""
+                        refreshStatus()
                         status = if (result.isSuccess) {
-                            "Ready"
+                            result.getOrNull() ?: "Ready"
                         } else {
-                            result.exceptionOrNull()?.message ?: "Failed"
+                            "Download failed: ${result.exceptionOrNull()?.message}"
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isDownloading
             ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Spacer(Modifier.width(12.dp))
-                Text("Check / Patch Binary")
+                if (isDownloading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text("Downloading…")
+                } else {
+                    Icon(Icons.Default.Download, contentDescription = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text(if (isReady) "Update Grok Binary" else "Download Grok Binary")
+                }
             }
 
             Spacer(Modifier.weight(1f))
 
             Text(
-                text = "Phase 2 scaffold · Use Phase 1 Termux installer for full native Grok\n" +
-                        "or place aarch64 musl binary in app files.",
+                text = "Downloads the official aarch64 musl binary from x.ai/cli\n" +
+                        "and applies the DNS patch automatically.",
                 style = MaterialTheme.typography.labelSmall,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
