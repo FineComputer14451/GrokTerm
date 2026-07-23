@@ -7,13 +7,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +34,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     onOpenTerminal: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenBrowser: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val binaryManager = remember { GrokBinaryManager(context) }
@@ -148,7 +150,6 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            // Status
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -164,7 +165,6 @@ fun HomeScreen(
                 }
             }
 
-            // Project
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -181,9 +181,17 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Default.FolderOpen, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(if (projectName == null) "Select folder" else "Change")
+                            Text(if (projectName == null) "Select" else "Change")
                         }
                         if (projectName != null) {
+                            OutlinedButton(
+                                onClick = onOpenBrowser,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.TravelExplore, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Browse")
+                            }
                             TextButton(onClick = {
                                 scope.launch {
                                     projectStore.clearProject()
@@ -195,57 +203,27 @@ fun HomeScreen(
                 }
             }
 
-            // Quick Actions
-            Text(
-                "Quick Actions",
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Text("Quick Actions", style = MaterialTheme.typography.labelSmall, modifier = Modifier.fillMaxWidth())
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                QuickTile(
-                    icon = Icons.Default.PlayArrow,
-                    label = "Grok",
-                    enabled = isReady,
-                    modifier = Modifier.weight(1f),
-                    onClick = { launch(LaunchAction.Interactive) }
-                )
-                QuickTile(
-                    icon = Icons.AutoMirrored.Filled.List,
-                    label = "Plan",
-                    enabled = isReady,
-                    modifier = Modifier.weight(1f),
-                    onClick = { launch(LaunchAction.Plan) }
-                )
+            Row(Modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickTile(Icons.Default.PlayArrow, "Grok", isReady, Modifier.weight(1f)) {
+                    launch(LaunchAction.Interactive)
+                }
+                QuickTile(Icons.AutoMirrored.Filled.List, "Plan", isReady, Modifier.weight(1f)) {
+                    launch(LaunchAction.Plan)
+                }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                QuickTile(
-                    icon = Icons.Default.Terminal,
-                    label = "Headless",
-                    enabled = isReady,
-                    modifier = Modifier.weight(1f),
-                    onClick = { showHeadlessDialog = true }
-                )
-                QuickTile(
-                    icon = Icons.Default.Refresh,
-                    label = "Resume",
-                    enabled = isReady,
-                    modifier = Modifier.weight(1f),
-                    onClick = { launch(LaunchAction.Resume) }
-                )
+            Row(Modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickTile(Icons.Default.Terminal, "Headless", isReady, Modifier.weight(1f)) {
+                    showHeadlessDialog = true
+                }
+                QuickTile(Icons.Default.Refresh, "Resume", isReady, Modifier.weight(1f)) {
+                    launch(LaunchAction.Resume)
+                }
             }
 
-            Button(
-                onClick = onOpenTerminal,
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
+            Button(onClick = onOpenTerminal, modifier = Modifier.fillMaxWidth().height(48.dp)) {
                 Icon(Icons.Default.Terminal, null)
                 Spacer(Modifier.width(12.dp))
                 Text("Open Terminal (Shell)")
@@ -291,7 +269,7 @@ fun HomeScreen(
             }
 
             Text(
-                text = "Plan / Headless / Resume require a downloaded binary.",
+                text = "Browse opens a DocumentFile tree for your selected Bible / skills folder.",
                 style = MaterialTheme.typography.labelSmall,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
